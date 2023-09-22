@@ -384,7 +384,7 @@ class Season:
                         continue
                     if i_time.strftime('%H%M') not in constants.STANDARD_HOURS:
                         continue
-                    if i_type not in constants.NAMED_TROPICAL_STORM_TYPES:
+                    if i_type not in constants.TROPICAL_ONLY_STORM_TYPES:
                         continue
                     if self.basin == 'all' and i_time.year != self.year:
                         continue

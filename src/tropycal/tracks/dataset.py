@@ -1,6 +1,7 @@
 r"""Functionality for storing and analyzing an entire cyclone dataset."""
 
 import re
+import os
 import calendar
 import numpy as np
 import xarray as xr
@@ -139,8 +140,11 @@ class TrackDataset:
         max_wind = int(
             np.nanmax([x for stormid in self.keys for x in self.data[stormid]['vmax']]))
         max_wind_name = ""
-        min_mslp = int(
-            np.nanmin([x for stormid in self.keys for x in self.data[stormid]['mslp']]))
+        min_mslp = np.nanmin([x for stormid in self.keys for x in self.data[stormid]['mslp']])
+        if np.isnan(min_mslp):
+            min_mslp = 0
+        else:
+            min_mslp = int(min_mslp)
         min_mslp_name = ""
 
         for key in self.keys[::-1]:
@@ -172,7 +176,8 @@ class TrackDataset:
 
         return "\n".join(summary)
 
-    def __init__(self, basin='north_atlantic', source='hurdat', include_btk=False, interpolate_data=False, **kwargs):
+    def __init__(self, basin='north_atlantic', source='hurdat', include_btk=False,
+                 local_files=None, interpolate_data=False, skip_check=True, **kwargs):
 
         # kwargs
         atlantic_url = kwargs.pop('atlantic_url', 'fetch')
@@ -213,7 +218,9 @@ class TrackDataset:
             self.neumann = True
         else:
             self.neumann = False
-
+        if local_files:
+            self.use_local_files = True
+            source = 'local'
         # initialize empty dict
         self.data = {}
 
@@ -223,8 +230,9 @@ class TrackDataset:
         elif source == 'ibtracs':
             self.__read_ibtracs()
         else:
-            raise RuntimeError(
-                "Accepted values for 'source' are 'hurdat' or 'ibtracs'")
+            if not self.use_local_files:
+                raise RuntimeError(
+                    "Accepted values for 'source' are 'hurdat' or 'ibtracs'")
 
         # Replace ibtracs with hurdat for atl/pac basins
         if source == 'ibtracs' and ibtracs_hurdat:
@@ -236,28 +244,30 @@ class TrackDataset:
                 self.basin = 'all'
 
         # Read in best track data
-        if include_btk and basin in ['north_atlantic', 'east_pacific', 'both']:
+        if (include_btk and basin in ['north_atlantic', 'east_pacific', 'both']):
             self.__read_btk()
-
-        # Delete duplicate entries
-        check = []
-        check_ids = []
-        keys = [k for k in self.data.keys()]
-        for key in keys:
-            if self.data[key]['name'].lower() == 'unnamed':
-                continue
-            check_id = f"{self.data[key]['name']},{self.data[key]['year']},{self.data[key]['time'][0].month}"
-            if check_id not in check:
-                check.append(check_id)
-                check_ids.append(key)
-            else:
-                existing_id = check_ids[check.index(check_id)]
-                if len(self.data[key]['vmax']) > len(self.data[existing_id]['vmax']):
-                    del self.data[existing_id]
-                    check_ids.pop(check_ids.index(existing_id))
+        if self.use_local_files:
+            self.__read_btk(files=local_files)
+        if not skip_check:
+            # Delete duplicate entries
+            check = []
+            check_ids = []
+            keys = [k for k in self.data.keys()]
+            for key in keys:
+                if self.data[key]['name'].lower() == 'unnamed':
+                    continue
+                check_id = f"{self.data[key]['name']},{self.data[key]['year']},{self.data[key]['time'][0].month}"
+                if check_id not in check:
+                    check.append(check_id)
                     check_ids.append(key)
                 else:
-                    del self.data[key]
+                    existing_id = check_ids[check.index(check_id)]
+                    if len(self.data[key]['vmax']) > len(self.data[existing_id]['vmax']):
+                        del self.data[existing_id]
+                        check_ids.pop(check_ids.index(existing_id))
+                        check_ids.append(key)
+                    else:
+                        del self.data[key]
 
         # Join storms for atlantic-pacific crossovers
         if self.basin == 'both':
@@ -272,7 +282,7 @@ class TrackDataset:
                     for var in [i for i in self.data[key[1]].keys() if isinstance(self.data[key[1]][i], list)]:
                         self.data[key[0]][var].append(
                             self.data[key[1]][var][idx])
-                    if i_time.strftime('%H%M') in constants.STANDARD_HOURS and self.data[key[1]]['type'][idx] in constants.NAMED_TROPICAL_STORM_TYPES:
+                    if i_time.strftime('%H%M') in constants.STANDARD_HOURS and self.data[key[1]]['type'][idx] in constants.TROPICAL_ONLY_STORM_TYPES:
                         self.data[key[0]]['ace'] += accumulated_cyclone_energy(
                             self.data[key[1]]['vmax'][idx])
 
@@ -310,10 +320,11 @@ class TrackDataset:
         # Find maximum wind and minimum pressure
         max_wind = int(
             np.nanmax([x for stormid in self.keys for x in self.data[stormid]['vmax']]))
-        max_wind_name = ""
-        min_mslp = int(
-            np.nanmin([x for stormid in self.keys for x in self.data[stormid]['mslp']]))
-        min_mslp_name = ""
+        min_mslp = np.nanmin([x for stormid in self.keys for x in self.data[stormid]['mslp']])
+        if np.isnan(min_mslp):
+            min_mslp = 0
+        else:
+            min_mslp = int(min_mslp)
         for key in self.keys[::-1]:
             array_vmax = np.array(self.data[key]['vmax'])
             array_mslp = np.array(self.data[key]['mslp'])
@@ -323,6 +334,8 @@ class TrackDataset:
             if len(array_mslp[~np.isnan(array_mslp)]) > 0 and np.nanmin(array_mslp) == min_mslp:
                 min_mslp_tuple = (
                     self.data[key]['name'], self.data[key]['year'])
+            else:
+                min_mslp_tuple = ('', '')
 
         # Add attributes
         self.attrs = {
@@ -481,7 +494,7 @@ class TrackDataset:
                 # Calculate ACE & append to storm total
                 if not np.isnan(vmax):
                     ace = accumulated_cyclone_energy(vmax)
-                    if hhmm in constants.STANDARD_HOURS and storm_type in constants.NAMED_TROPICAL_STORM_TYPES:
+                    if hhmm in constants.STANDARD_HOURS and storm_type in constants.TROPICAL_ONLY_STORM_TYPES:
                         self.data[current_id]['ace'] += np.round(ace, 4)
 
         # Account for operationally unnamed storms
@@ -544,106 +557,117 @@ class TrackDataset:
         tsec = str(round(time_elapsed.total_seconds(), 2))
         print(f"--> Completed reading in HURDAT2 data ({tsec} seconds)")
 
-    def __read_btk(self):
+    def __read_btk(self, files=None):
         r"""
         Reads in best track data into the Dataset object.
         """
-
+        local_flag = bool(files)
         # Time duration to read in best track
         start_time = dt.now()
         print("--> Starting to read in best track data")
 
         # Get range of years missing
-        start_year = self.data[([k for k in self.data.keys()])[-1]]['year'] + 1
+        if local_flag:
+            start_year = 114
+        else:
+            start_year = self.data[([k for k in self.data.keys()])[-1]]['year'] + 1
         end_year = (dt.now()).year
 
-        # Get list of files in online directory
-        use_ftp = False
-        try:
-            urlpath = urllib.request.urlopen(
-                'https://ftp.nhc.noaa.gov/atcf/btk/')
-            string = urlpath.read().decode('utf-8')
-        except:
-            use_ftp = True
-            urlpath = urllib.request.urlopen(
-                'ftp://ftp.nhc.noaa.gov/atcf/btk/')
-            string = urlpath.read().decode('utf-8')
+        if not local_flag:
+            # Get list of files in online directory
+            use_ftp = False
+            try:
+                urlpath = urllib.request.urlopen(
+                    'https://ftp.nhc.noaa.gov/atcf/btk/')
+                string = urlpath.read().decode('utf-8')
+            except:
+                use_ftp = True
+                urlpath = urllib.request.urlopen(
+                    'ftp://ftp.nhc.noaa.gov/atcf/btk/')
+                string = urlpath.read().decode('utf-8')
 
         # Get relevant filenames from directory
-        files = []
-        files_years = []
-        for iyear in range(start_year, end_year + 1):
-            if self.basin == 'north_atlantic':
-                search_pattern = f'bal[01234][0123456789]{iyear}.dat'
-            elif self.basin == 'east_pacific':
-                search_pattern = f'b[ec]p[01234][0123456789]{iyear}.dat'
-            elif self.basin == 'both':
-                search_pattern = f'b[aec][lp][01234][0123456789]{iyear}.dat'
+        if not local_flag:
+            files = []
+            files_years = []
+            for iyear in range(start_year, end_year + 1):
+                if self.basin == 'north_atlantic':
+                    search_pattern = f'bal[01234][0123456789]{iyear}.dat'
+                elif self.basin == 'east_pacific':
+                    search_pattern = f'b[ec]p[01234][0123456789]{iyear}.dat'
+                elif self.basin == 'both':
+                    search_pattern = f'b[aec][lp][01234][0123456789]{iyear}.dat'
 
-            pattern = re.compile(search_pattern)
-            filelist = pattern.findall(string)
-            for filename in filelist:
-                if filename not in files:
-                    files.append(filename)
+                pattern = re.compile(search_pattern)
+                filelist = pattern.findall(string)
+                for filename in filelist:
+                    if filename not in files:
+                        files.append(filename)
+                    if iyear not in files_years:
+                        files_years.append(iyear)
+
+            # If no files are available, go into archive directory
+            archive_years = []
+            for iyear in range(start_year, end_year):
                 if iyear not in files_years:
-                    files_years.append(iyear)
+                    archive_years.append(iyear)
 
-        # If no files are available, go into archive directory
-        archive_years = []
-        for iyear in range(start_year, end_year):
-            if iyear not in files_years:
-                archive_years.append(iyear)
-
-            # retrieve list of storms for that year from the archive
-            path_season = urllib.request.urlopen(
-                f'http://hurricanes.ral.ucar.edu/repository/data/bdecks_open/{iyear}/')
-            string = path_season.read().decode('utf-8')
-            nums = "[0123456789]"
-            search_pattern = f'bal[0123]{nums}{iyear}.dat'
-            pattern = re.compile(search_pattern)
-            filelist = pattern.findall(string)
-            for file in filelist:
-                if file not in files:
-                    files.append(file)
-
+                # retrieve list of storms for that year from the archive
+                path_season = urllib.request.urlopen(
+                    f'http://hurricanes.ral.ucar.edu/repository/data/bdecks_open/{iyear}/')
+                string = path_season.read().decode('utf-8')
+                nums = "[0123456789]"
+                search_pattern = f'bal[0123]{nums}{iyear}.dat'
+                pattern = re.compile(search_pattern)
+                filelist = pattern.findall(string)
+                for file in filelist:
+                    if file not in files:
+                        files.append(file)
         # For each file, read in file content and add to hurdat dict
         for file in files:
 
             # Get file ID
-            stormid = ((file.split(".dat")[0])[1:]).upper()
-
+            if local_flag:
+                stormid = ((os.path.split(file)[1].split(".dat")[0])[1:]).upper()
+            else:
+                stormid = ((file.split(".dat")[0])[1:]).upper()
             # Determine basin
             add_basin = 'north_atlantic'
             if stormid[0] == 'C':
                 add_basin = 'east_pacific'
             elif stormid[0] == 'E':
                 add_basin = 'east_pacific'
+            elif stormid[0] == 'W':
+                add_basin = 'west_pacific'
 
             # add empty entry into dict
             self.data[stormid] = {'id': stormid, 'operational_id': stormid, 'name': '', 'year': int(stormid[4:8]), 'season': int(
                 stormid[4:8]), 'basin': add_basin, 'source_info': 'NHC Hurricane Database', 'source_method': "NHC's Automated Tropical Cyclone Forecasting System (ATCF)", 'source_url': "https://ftp.nhc.noaa.gov/atcf/btk/"}
             self.data[stormid]['source'] = self.source
-
             # add empty lists
             for val in ['time', 'extra_obs', 'special', 'type', 'lat', 'lon', 'vmax', 'mslp', 'wmo_basin']:
                 self.data[stormid][val] = []
             self.data[stormid]['ace'] = 0.0
 
             # Read in file
-            if use_ftp:
-                url = f"ftp://ftp.nhc.noaa.gov/atcf/btk/{file}"
+            if not local_flag:
+                if use_ftp:
+                    url = f"ftp://ftp.nhc.noaa.gov/atcf/btk/{file}"
+                else:
+                    url = f"https://ftp.nhc.noaa.gov/atcf/btk/{file}"
+                if int(stormid[4:8]) in archive_years:
+                    url = f"http://hurricanes.ral.ucar.edu/repository/data/bdecks_open/{int(stormid[4:8])}/b{stormid.lower()}.dat"
+                content = read_url(url)
             else:
-                url = f"https://ftp.nhc.noaa.gov/atcf/btk/{file}"
-            if int(stormid[4:8]) in archive_years:
-                url = f"http://hurricanes.ral.ucar.edu/repository/data/bdecks_open/{int(stormid[4:8])}/b{stormid.lower()}.dat"
-            content = read_url(url)
+                with open(file, 'r') as f:
+                    content = f.readlines()
+                    content = [(i.replace(" ", "")).split(",") for i in content]
 
             # iterate through file lines
             for line in content:
-
-                if len(line) < 28:
+                length = len(line)
+                if length < 9:
                     continue
-
                 # Get time of obs
                 time = dt.strptime(line[2], '%Y%m%d%H')
                 date_hhmm = time.strftime('%H%M')
@@ -668,9 +692,16 @@ class TrackDataset:
 
                 # Get other relevant variables
                 btk_wind = int(line[8])
-                btk_mslp = int(line[9])
-                btk_type = line[10]
-                name = line[27]
+                if length > 9:
+                    btk_mslp = int(line[9])
+                    btk_type = line[10].strip()
+                else:
+                    btk_mslp = np.nan
+                    btk_type = ''
+                if length >= 27:
+                    name = line[27]
+                else:
+                    name = ''
 
                 # Replace with NaNs
                 if btk_wind > 250 or btk_wind < 10:
@@ -695,7 +726,7 @@ class TrackDataset:
                     origin_basin = 'north_atlantic' if stormid[0:2] == 'AL' else 'east_pacific'
                 else:
                     origin_basin = self.basin + ''
-                if self.basin == 'east_pacific':
+                if self.basin in ['east_pacific', 'west_pacific']:
                     check_basin = get_basin(
                         self.data[stormid]['lat'][0], self.data[stormid]['lon'][0], self.basin)
                     if check_basin != self.basin:
@@ -706,7 +737,7 @@ class TrackDataset:
                 # Calculate ACE & append to storm total
                 if not np.isnan(btk_wind):
                     ace = accumulated_cyclone_energy(btk_wind)
-                    if btk_type in constants.NAMED_TROPICAL_STORM_TYPES:
+                    if btk_type in constants.TROPICAL_ONLY_STORM_TYPES:
                         self.data[stormid]['ace'] += np.round(ace, 4)
 
             # Fix name for unnamed storms
@@ -972,7 +1003,7 @@ class TrackDataset:
                     # Calculate ACE & append to storm total
                     if not np.isnan(neumann_vmax):
                         ace = accumulated_cyclone_energy(neumann_vmax)
-                        if hhmm in constants.STANDARD_HOURS and neumann_type in constants.NAMED_TROPICAL_STORM_TYPES and not np.isnan(ace):
+                        if hhmm in constants.STANDARD_HOURS and neumann_type in constants.TROPICAL_ONLY_STORM_TYPES and not np.isnan(ace):
                             neumann[ibtracs_id]['ace'] += np.round(ace, 4)
 
             # Skip missing entries
@@ -1086,7 +1117,7 @@ class TrackDataset:
                 # Calculate ACE & append to storm total
                 if not np.isnan(jtwc_vmax):
                     ace = accumulated_cyclone_energy(jtwc_vmax)
-                    if hhmm in constants.STANDARD_HOURS and storm_type in constants.NAMED_TROPICAL_STORM_TYPES and not np.isnan(ace):
+                    if hhmm in constants.STANDARD_HOURS and storm_type in constants.TROPICAL_ONLY_STORM_TYPES and not np.isnan(ace):
                         self.data[ibtracs_id]['ace'] += np.round(ace, 4)
 
             # Handle non-WMO mode
@@ -1196,7 +1227,7 @@ class TrackDataset:
                 # Calculate ACE & append to storm total
                 if not np.isnan(vmax):
                     ace = accumulated_cyclone_energy(vmax)
-                    if hhmm in constants.STANDARD_HOURS and storm_type in constants.NAMED_TROPICAL_STORM_TYPES and not np.isnan(ace):
+                    if hhmm in constants.STANDARD_HOURS and storm_type in constants.TROPICAL_ONLY_STORM_TYPES and not np.isnan(ace):
                         self.data[storm_id]['ace'] += np.round(ace, 4)
 
         # Remove empty entries
