@@ -1953,7 +1953,8 @@ class TrackDataset:
         # Construct percentile arrays
         all_ace = np.ones((len(years), len(julian))) * np.nan
         for year in range(min(climo_bounds), max(climo_bounds) + 1):
-            all_ace[years.index(year)] = ace[str(year)]['ace']
+            if str(year) in ace:
+                all_ace[years.index(year)] = ace[str(year)]['ace']
         pmin, p10, p25, p40, p60, p75, p90, pmax = np.nanpercentile(
             all_ace, [0, 10, 25, 40, 60, 75, 90, 100], axis=0)
 
@@ -2300,7 +2301,7 @@ class TrackDataset:
             cat = 0
         else:
             cat = category_match.get(category, 'c1')
-
+        years = list(tc_days.keys())
         # Construct percentile arrays
         if cat == 0:
             p50 = {}

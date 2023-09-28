@@ -712,24 +712,28 @@ class Plot:
         # --------------------------------------------------------------------------------------
 
         # Phantom legend
-        handles = []
-        for _ in range(10):
-            handles.append(mlines.Line2D(
-                [], [], linestyle='-', label='', lw=0))
-        l = self.ax.legend(handles=handles, loc='upper left',
-                           fancybox=True, framealpha=0, fontsize=11.5)
-        plt.draw()
+        # handles = []
+        #for _ in range(10):
+        #    handles.append(mlines.Line2D(
+        #        [], [], linestyle='-', label='', lw=0))
+        #l = self.ax.legend(handles=handles, loc='upper left',
+        #                   fancybox=True, framealpha=0, fontsize=11.5)
+        # plt.draw()
 
         # Get the bbox
-        try:
-            bb = l.legendPatch.get_bbox().inverse_transformed(self.fig.transFigure)
-        except:
-            bb = l.legendPatch.get_bbox().transformed(self.fig.transFigure.inverted())
-        bb_ax = self.ax.get_position()
+        #try:
+        #    bb = l.legendPatch.get_bbox().inverse_transformed(self.fig.transFigure)
+        #except:
+        #    bb = l.legendPatch.get_bbox().transformed(self.fig.transFigure.inverted())
+        # bb_ax = self.ax.get_position()
 
         # Define colorbar axis
+        x0 = 0.13
+        width = 0.035
+        y0 = 0.56
+        height = 0.3
         cax = self.fig.add_axes(
-            [bb.x0 + 1.2 * bb.width, bb.y0 - .05 * bb.height, 0.015, bb.height])
+            [x0 + 1.2 * width, y0 - .05 * height, 0.015, height])
         cbar = self.fig.colorbar(cbmap, cax=cax, orientation='vertical',
                                  ticks=clevs)
         cax.tick_params(labelsize=11.5)
@@ -754,7 +758,7 @@ class Plot:
             cax.set_yticklabels(
                 [f'{mdates.num2date(i):%b %-d}' for i in clevs], fontsize=11.5)
 
-        rectangle = mpatches.Rectangle((bb.x0, bb.y0 - 0.1 * bb.height), (2 + rect_offset) * bb.width, 1.1 * bb.height,
+        rectangle = mpatches.Rectangle((x0, y0 - 0.1 * height), (2 + rect_offset) * width, 1.1 * height,
                                        fc='w', edgecolor='0.8', alpha=0.8,
                                        transform=self.fig.transFigure, zorder=3)
         self.ax.add_patch(rectangle)
