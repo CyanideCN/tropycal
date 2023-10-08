@@ -697,7 +697,7 @@ class TrackDataset:
                     btk_type = line[10].strip()
                 else:
                     btk_mslp = np.nan
-                    btk_type = ''
+                    btk_type = 'TS' # Just default
                 if length >= 27:
                     name = line[27]
                 else:
@@ -1871,7 +1871,7 @@ class TrackDataset:
                 storm_basin = np.array(storm_data['wmo_basin'])
 
                 # Subset to remove obs not useful for ace
-                idx1 = ((storm_type == 'SS') | (storm_type == 'TS') | (
+                idx1 = ((storm_type == 'TS') | (
                     storm_type == 'HU') | (storm_type == 'TY') | (storm_type == 'ST'))
                 idx2 = ~np.isnan(storm_vmax)
                 idx3 = ((storm_date_h == '0000') | (storm_date_h == '0600') | (
@@ -1951,10 +1951,10 @@ class TrackDataset:
             julian_months = [7, 8, 9, 10, 11, 12, 1, 2, 3, 4, 5, 6]
 
         # Construct percentile arrays
+        years = list(ace.keys())
         all_ace = np.ones((len(years), len(julian))) * np.nan
-        for year in range(min(climo_bounds), max(climo_bounds) + 1):
-            if str(year) in ace:
-                all_ace[years.index(year)] = ace[str(year)]['ace']
+        for year in years:
+            all_ace[years.index(year)] = ace[str(year)]['ace']
         pmin, p10, p25, p40, p60, p75, p90, pmax = np.nanpercentile(
             all_ace, [0, 10, 25, 40, 60, 75, 90, 100], axis=0)
 
