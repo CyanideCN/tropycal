@@ -2050,7 +2050,7 @@ class TrackPlot(Plot):
             count_major = np.sum(sinfo['season_major'])
             count_ace = np.sum(sinfo['season_ace'])
         self.ax.set_title(
-            f"{count_named} named {dot} {count_hurricane} hurricanes {dot} {count_major} major\n{count_ace:.1f} Cumulative ACE", loc='right', fontsize=13)
+            f"{count_named} named {dot} {count_hurricane} hurricanes {dot} {count_major} major\n{count_ace:.4f} Cumulative ACE", loc='right', fontsize=13)
 
         # --------------------------------------------------------------------------------------
 

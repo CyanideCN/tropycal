@@ -391,7 +391,7 @@ class Season:
                     if np.isnan(i_vmax):
                         continue
                     temp_ace += accumulated_cyclone_energy(i_vmax)
-                temp_ace = np.round(temp_ace, 1)
+                temp_ace = np.round(temp_ace, 4)
 
                 # Get indices of all tropical/subtropical time steps
                 if self.basin == 'all':
@@ -484,8 +484,7 @@ class Season:
                 summary_dict['season_named'] = len(narray[narray >= 34])
                 summary_dict['season_hurricane'] = len(narray[narray >= 65])
                 summary_dict['season_major'] = len(narray[narray >= 100])
-                summary_dict['season_ace'] = np.round(
-                    np.sum(summary_dict['ace']), 1)
+                summary_dict['season_ace'] = np.sum(summary_dict['ace'])
                 summary_dict['season_subtrop_pure'] = count_ss_pure
                 summary_dict['season_subtrop_partial'] = count_ss_partial
             else:
@@ -499,8 +498,7 @@ class Season:
                     narray[narray >= 65])
                 summary_dict['season_major'][season_idx] = len(
                     narray[narray >= 100])
-                summary_dict['season_ace'][season_idx] = np.round(
-                    np.sum(summary_dict['ace'][season_idx]), 1)
+                summary_dict['season_ace'][season_idx] = np.sum(summary_dict['ace'][season_idx])
                 summary_dict['season_subtrop_pure'][season_idx] = count_ss_pure
                 summary_dict['season_subtrop_partial'][season_idx] = count_ss_partial
 
