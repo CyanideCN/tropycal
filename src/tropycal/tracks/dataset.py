@@ -10,6 +10,7 @@ import scipy.stats as stats
 import urllib
 import warnings
 from datetime import datetime as dt, timedelta
+from functools import total_ordering
 from scipy.ndimage import gaussian_filter as gfilt
 from matplotlib import path
 
@@ -34,6 +35,23 @@ except ImportError:
     warnings.warn(
         "Warning: Matplotlib is not installed in your python environment. Plotting functions will not work.")
 
+@total_ordering
+class _FixYear(object):
+
+    def __init__(self, y1, y2):
+        self._number = [y1, y2]
+    
+    def __eq__(self, o):
+        for i in self._number:
+            if i == o:
+                return True
+        return False
+    
+    def __gt__(self, o):
+        for i in self._number:
+            if i > o:
+                return True
+        return False
 
 class TrackDataset:
 
@@ -662,7 +680,12 @@ class TrackDataset:
                 with open(file, 'r') as f:
                     content = f.readlines()
                     content = [(i.replace(" ", "")).split(",") for i in content]
-
+            init_year = content[0][2][:4]
+            end_year = content[-1][2][:4]
+            if init_year != end_year:
+                #self.data[stormid]['year'] = _FixYear(int(init_year), int(end_year))
+                if self.basin not in constants.SOUTH_HEMISPHERE_BASINS:
+                    self.data[stormid]['season'] = _FixYear(int(init_year), int(end_year))
             # iterate through file lines
             for line in content:
                 length = len(line)
